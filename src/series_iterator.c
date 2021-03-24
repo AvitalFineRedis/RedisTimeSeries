@@ -96,13 +96,16 @@ ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSamp
     ChunkResult res;
     ChunkFuncs *funcs = iterator->series->funcs;
     Chunk_t *currentChunk = iterator->currentChunk;
+    const uint64_t itt_max_ts = iterator->maxTimestamp;
+    const uint64_t itt_min_ts = iterator->minTimestamp;
+    const int not_reverse = !iterator->reverse;
 
     while (TRUE) {
         res = SeriesGetNext(iterator, currentSample);
         if (res == CR_END) { // Reached the end of the chunk
             if (!iterator->DictGetNext(iterator->dictIter, NULL, (void *)&currentChunk) ||
-                funcs->GetFirstTimestamp(currentChunk) > iterator->maxTimestamp ||
-                funcs->GetLastTimestamp(currentChunk) < iterator->minTimestamp) {
+                funcs->GetFirstTimestamp(currentChunk) > itt_max_ts ||
+                funcs->GetLastTimestamp(currentChunk) < itt_min_ts) {
                 return CR_END; // No more chunks or they out of range
             }
             iterator->chunkIteratorFuncs.Free(iterator->chunkIterator);
@@ -111,28 +114,30 @@ ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSamp
             if (SeriesGetNext(iterator, currentSample) != CR_OK) {
                 return CR_END;
             }
-        } else if (res == CR_ERR) {
+        }
+        if (res == CR_ERR) {
             return CR_ERR;
         }
+        const u_int64_t current_v = currentSample->timestamp;
 
         // check timestamp is within range
-        if (!iterator->reverse) {
+        if (not_reverse) {
             // forward range handling
-            if (currentSample->timestamp < iterator->minTimestamp) {
+            if (current_v < itt_min_ts) {
                 // didn't reach the starting point of the requested range
                 continue;
             }
-            if (currentSample->timestamp > iterator->maxTimestamp) {
+            if (current_v > itt_max_ts) {
                 // reached the end of the requested range
                 return CR_END;
             }
         } else {
             // reverse range handling
-            if (currentSample->timestamp > iterator->maxTimestamp) {
+            if (current_v > itt_max_ts) {
                 // didn't reach our starting range
                 continue;
             }
-            if (currentSample->timestamp < iterator->minTimestamp) {
+            if (current_v < itt_min_ts) {
                 // didn't reach the starting point of the requested range
                 return CR_END;
             }
