@@ -449,6 +449,7 @@ static void handleCompaction(RedisModuleCtx *ctx,
 static int internalAdd(RedisModuleCtx *ctx,
                        Series *series,
                        api_timestamp_t timestamp,
+                       RedisModuleString *timestampRedisString,
                        double value,
                        DuplicatePolicy dp_override) {
     timestamp_t lastTS = series->lastTimestamp;
@@ -477,7 +478,11 @@ static int internalAdd(RedisModuleCtx *ctx,
             rule = rule->nextRule;
         }
     }
-    RedisModule_ReplyWithLongLong(ctx, timestamp);
+    if (timestampRedisString == NULL) {
+        RedisModule_ReplyWithLongLong(ctx, timestamp);
+    } else {
+        RedisModule_ReplyWithString(ctx, timestampRedisString);
+    }
     return REDISMODULE_OK;
 }
 
@@ -488,17 +493,23 @@ static inline int add(RedisModuleCtx *ctx,
                       RedisModuleString **argv,
                       int argc) {
     RedisModuleKey *key = RedisModule_OpenKey(ctx, keyName, REDISMODULE_READ | REDISMODULE_WRITE);
+    RedisModuleString *timestampRedisString = NULL;
     double value;
     api_timestamp_t timestamp;
     if ((RedisModule_StringToDouble(valueStr, &value) != REDISMODULE_OK))
         return RTS_ReplyGeneralError(ctx, "TSDB: invalid value");
-
+    // We use timestampRedisString to avoid unecessary string2ll --> [ ll2string ]
+    // given we can use the string argument of the timestamp
+    // only when we're not passed the timestamp ( using * ) we will be required to use the expensive
+    // ll2string
+    timestampRedisString = timestampStr;
     if ((RedisModule_StringToLongLong(timestampStr, (long long int *)&timestamp) !=
          REDISMODULE_OK)) {
         // if timestamp is "*", take current time (automatic timestamp)
-        if (RMUtil_StringEqualsC(timestampStr, "*"))
+        if (RMUtil_StringEqualsC(timestampStr, "*")) {
             timestamp = (u_int64_t)RedisModule_Milliseconds();
-        else
+            timestampRedisString = NULL;
+        } else
             return RTS_ReplyGeneralError(ctx, "TSDB: invalid timestamp");
     }
 
@@ -524,7 +535,7 @@ static inline int add(RedisModuleCtx *ctx,
             return REDISMODULE_ERR;
         }
     }
-    int rv = internalAdd(ctx, series, timestamp, value, dp);
+    int rv = internalAdd(ctx, series, timestamp, timestampRedisString, value, dp);
     RedisModule_CloseKey(key);
     return rv;
 }
@@ -782,6 +793,7 @@ int TSDB_incrby(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     }
 
     RedisModuleString *keyName = argv[1];
+    RedisModuleString *timeStampRedisString = NULL;
     Series *series;
 
     RedisModuleKey *key = RedisModule_OpenKey(ctx, argv[1], REDISMODULE_READ | REDISMODULE_WRITE);
@@ -807,9 +819,12 @@ int TSDB_incrby(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
     int timestampLoc = RMUtil_ArgIndex("TIMESTAMP", argv, argc);
     if (timestampLoc == -1 || RMUtil_StringEqualsC(argv[timestampLoc + 1], "*")) {
         currentUpdatedTime = RedisModule_Milliseconds();
-    } else if (RedisModule_StringToLongLong(argv[timestampLoc + 1],
-                                            (long long *)&currentUpdatedTime) != REDISMODULE_OK) {
-        return RTS_ReplyGeneralError(ctx, "TSDB: invalid timestamp");
+    } else {
+        timeStampRedisString = argv[timestampLoc + 1];
+        if (RedisModule_StringToLongLong(timeStampRedisString, (long long *)&currentUpdatedTime) !=
+            REDISMODULE_OK) {
+            return RTS_ReplyGeneralError(ctx, "TSDB: invalid timestamp");
+        }
     }
 
     if (currentUpdatedTime < series->lastTimestamp && series->lastTimestamp != 0) {
@@ -825,7 +840,7 @@ int TSDB_incrby(RedisModuleCtx *ctx, RedisModuleString **argv, int argc) {
         result -= incrby;
     }
 
-    int rv = internalAdd(ctx, series, currentUpdatedTime, result, DP_LAST);
+    int rv = internalAdd(ctx, series, currentUpdatedTime, timeStampRedisString, result, DP_LAST);
     RedisModule_ReplicateVerbatim(ctx);
     RedisModule_CloseKey(key);
     return rv;
