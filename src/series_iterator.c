@@ -69,15 +69,13 @@ int SeriesQuery(Series *series,
 }
 
 // this is an internal function that routes the next call to the appropriate chunk iterator function
-static ChunkResult SeriesGetNext(SeriesIterator *iter, Sample *sample) {
-    if (iter->reverse == false) {
-        return iter->chunkIteratorFuncs.GetNext(iter->chunkIterator, sample);
-    } else {
-        if (iter->chunkIteratorFuncs.GetPrev == NULL) {
-            return CR_ERR;
-        }
-        return iter->chunkIteratorFuncs.GetPrev(iter->chunkIterator, sample);
-    }
+static inline ChunkResult SeriesGetNext(SeriesIterator *iter, Sample *sample) {
+    return iter->chunkIteratorFuncs.GetNext(iter->chunkIterator, sample);
+}
+
+// this is an internal function that routes the next call to the appropriate chunk iterator function
+static inline ChunkResult SeriesGetPrevious(SeriesIterator *iter, Sample *sample) {
+    return iter->chunkIteratorFuncs.GetPrev(iter->chunkIterator, sample);
 }
 
 void SeriesIteratorClose(SeriesIterator *iterator) {
@@ -90,6 +88,14 @@ void SeriesIteratorClose(SeriesIterator *iterator) {
     RedisModule_DictIteratorStop(iterator->dictIter);
 }
 
+static inline void resetChunkIterator(SeriesIterator *iterator,
+                                      const ChunkFuncs *funcs,
+                                      void *currentChunk) {
+    iterator->chunkIteratorFuncs.Free(iterator->chunkIterator);
+    iterator->chunkIterator = funcs->NewChunkIterator(
+        currentChunk, SeriesChunkIteratorOptions(iterator), &iterator->chunkIteratorFuncs);
+}
+
 // Fills sample from chunk. If all samples were extracted from the chunk, we
 // move to the next chunk.
 ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSample) {
@@ -99,29 +105,26 @@ ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSamp
     const uint64_t itt_max_ts = iterator->maxTimestamp;
     const uint64_t itt_min_ts = iterator->minTimestamp;
     const int not_reverse = !iterator->reverse;
-
-    while (TRUE) {
-        res = SeriesGetNext(iterator, currentSample);
-        if (res == CR_END) { // Reached the end of the chunk
-            if (!iterator->DictGetNext(iterator->dictIter, NULL, (void *)&currentChunk) ||
-                funcs->GetFirstTimestamp(currentChunk) > itt_max_ts ||
-                funcs->GetLastTimestamp(currentChunk) < itt_min_ts) {
-                return CR_END; // No more chunks or they out of range
+    if (not_reverse) {
+        while (TRUE) {
+            res = SeriesGetNext(iterator, currentSample);
+            if (res == CR_END) { // Reached the end of the chunk
+                if (!iterator->DictGetNext(iterator->dictIter, NULL, (void *)&currentChunk) ||
+                    funcs->GetFirstTimestamp(currentChunk) > itt_max_ts ||
+                    funcs->GetLastTimestamp(currentChunk) < itt_min_ts) {
+                    return CR_END; // No more chunks or they out of range
+                }
+                resetChunkIterator(iterator, funcs, currentChunk);
+                if (SeriesGetNext(iterator, currentSample) != CR_OK) {
+                    return CR_END;
+                }
             }
-            iterator->chunkIteratorFuncs.Free(iterator->chunkIterator);
-            iterator->chunkIterator = funcs->NewChunkIterator(
-                currentChunk, SeriesChunkIteratorOptions(iterator), &iterator->chunkIteratorFuncs);
-            if (SeriesGetNext(iterator, currentSample) != CR_OK) {
-                return CR_END;
+            if (res == CR_ERR) {
+                return CR_ERR;
             }
-        }
-        if (res == CR_ERR) {
-            return CR_ERR;
-        }
-        const u_int64_t current_v = currentSample->timestamp;
+            const u_int64_t current_v = currentSample->timestamp;
 
-        // check timestamp is within range
-        if (not_reverse) {
+            // check timestamp is within range
             // forward range handling
             if (current_v < itt_min_ts) {
                 // didn't reach the starting point of the requested range
@@ -131,7 +134,27 @@ ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSamp
                 // reached the end of the requested range
                 return CR_END;
             }
-        } else {
+            return CR_OK;
+        }
+    } else {
+        while (TRUE) {
+            res = SeriesGetPrevious(iterator, currentSample);
+            if (res == CR_END) { // Reached the end of the chunk
+                if (!iterator->DictGetNext(iterator->dictIter, NULL, (void *)&currentChunk) ||
+                    funcs->GetFirstTimestamp(currentChunk) > itt_max_ts ||
+                    funcs->GetLastTimestamp(currentChunk) < itt_min_ts) {
+                    return CR_END; // No more chunks or they out of range
+                }
+                resetChunkIterator(iterator, funcs, currentChunk);
+                if (SeriesGetPrevious(iterator, currentSample) != CR_OK) {
+                    return CR_END;
+                }
+            }
+            if (res == CR_ERR) {
+                return CR_ERR;
+            }
+            const u_int64_t current_v = currentSample->timestamp;
+
             // reverse range handling
             if (current_v > itt_max_ts) {
                 // didn't reach our starting range
@@ -141,8 +164,8 @@ ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSamp
                 // didn't reach the starting point of the requested range
                 return CR_END;
             }
+            return CR_OK;
         }
-        return CR_OK;
     }
     return CR_OK;
 }
