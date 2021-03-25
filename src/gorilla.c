@@ -221,7 +221,7 @@ static inline int64_t Bin_MinVal(u_int8_t nbits) {
 
 // `bit` is a global bit (can be out of scope of a single binary_t)
 
-static inline u_int8_t localbit(globalbit_t bit) {
+static inline u_int8_t localbit(const globalbit_t bit) {
     return bit % BINW;
 }
 
@@ -232,15 +232,15 @@ static bool Bin_InRange(int64_t x, u_int8_t nbits) {
     return x >= Bin_MinVal(nbits) && x <= Bin_MaxVal(nbits);
 }
 
-static inline binary_t *Bins_bitbin(u_int64_t *bins, globalbit_t bit) {
-    return &bins[bit / BINW];
+static inline binary_t *Bins_bitbin(const u_int64_t *bins, const globalbit_t bit) {
+    return &bins[bit >> 6];
 }
 
-static inline bool Bins_bitoff(u_int64_t *bins, globalbit_t bit) {
-    return !(bins[bit / BINW] & BIT(localbit(bit)));
+static inline bool Bins_bitoff(const u_int64_t *bins, globalbit_t bit) {
+    return !(bins[bit >> 6] & BIT(localbit(bit)));
 }
 
-static inline bool Bins_biton(u_int64_t *bins, globalbit_t bit) {
+static inline bool Bins_biton(const u_int64_t *bins, globalbit_t bit) {
     return !Bins_bitoff(bins, bit);
 }
 
@@ -260,9 +260,11 @@ static void appendBits(binary_t *bins, globalbit_t *bit, binary_t data, u_int8_t
 }
 
 // Read `dataLen` bits from `bins` at position `bit`
-static binary_t readBits(binary_t *bins, globalbit_t *bit, const u_int8_t dataLen) {
-    binary_t *bin_it = Bins_bitbin(bins, *bit);
-    const localbit_t lbit = localbit(*bit);
+static inline binary_t readBits(const binary_t *bins,
+                                globalbit_t start_pos,
+                                const u_int8_t dataLen) {
+    binary_t *bin_it = Bins_bitbin(bins, start_pos);
+    const localbit_t lbit = localbit(start_pos);
     const localbit_t available = BINW - lbit;
 
     binary_t bin = 0;
@@ -272,7 +274,6 @@ static binary_t readBits(binary_t *bins, globalbit_t *bit, const u_int8_t dataLe
         bin = LSB(*bin_it >> lbit, available);
         bin |= LSB(*++bin_it, dataLen - available) << available;
     }
-    *bit += dataLen;
     return bin;
 }
 
@@ -435,24 +436,28 @@ ChunkResult Compressed_Append(CompressedChunk *chunk, timestamp_t timestamp, dou
  */
 static u_int64_t readInteger(Compressed_Iterator *iter) {
     binary_t *bins = iter->chunk->data;
-    globalbit_t *bit = &iter->idx;
-
     int64_t dd = 0;
     // Read stored double delta value
-    if (Bins_bitoff(bins, (*bit)++)) {
+    if (Bins_bitoff(bins, iter->idx++)) {
         dd = 0;
-    } else if (Bins_bitoff(bins, (*bit)++)) {
-        dd = bin2int(readBits(bins, bit, CMPR_L1), CMPR_L1);
-    } else if (Bins_bitoff(bins, (*bit)++)) {
-        dd = bin2int(readBits(bins, bit, CMPR_L2), CMPR_L2);
-    } else if (Bins_bitoff(bins, (*bit)++)) {
-        dd = bin2int(readBits(bins, bit, CMPR_L3), CMPR_L3);
-    } else if (Bins_bitoff(bins, (*bit)++)) {
-        dd = bin2int(readBits(bins, bit, CMPR_L4), CMPR_L4);
-    } else if (Bins_bitoff(bins, (*bit)++)) {
-        dd = bin2int(readBits(bins, bit, CMPR_L5), CMPR_L5);
+    } else if (Bins_bitoff(bins, iter->idx++)) {
+        dd = bin2int(readBits(bins, iter->idx, CMPR_L1), CMPR_L1);
+        iter->idx += CMPR_L1;
+    } else if (Bins_bitoff(bins, iter->idx++)) {
+        dd = bin2int(readBits(bins, iter->idx, CMPR_L2), CMPR_L2);
+        iter->idx += CMPR_L2;
+    } else if (Bins_bitoff(bins, iter->idx++)) {
+        dd = bin2int(readBits(bins, iter->idx, CMPR_L3), CMPR_L3);
+        iter->idx += CMPR_L3;
+    } else if (Bins_bitoff(bins, iter->idx++)) {
+        dd = bin2int(readBits(bins, iter->idx, CMPR_L4), CMPR_L4);
+        iter->idx += CMPR_L4;
+    } else if (Bins_bitoff(bins, iter->idx++)) {
+        dd = bin2int(readBits(bins, iter->idx, CMPR_L5), CMPR_L5);
+        iter->idx += CMPR_L5;
     } else {
-        dd = readBits(bins, bit, 64);
+        dd = readBits(bins, iter->idx, 64);
+        iter->idx += 64;
     }
 
     // Update iterator
@@ -470,15 +475,14 @@ static u_int64_t readInteger(Compressed_Iterator *iter) {
  *
  * Finally, the compressed representation of the value is decoded.
  */
-static double readFloat(Compressed_Iterator *iter) {
+static double readFloat(Compressed_Iterator *iter, const uint64_t *data) {
     // Check if value was changed
     // control bit ‘0’ (case a)
-    if (Bins_bitoff(iter->chunk->data, iter->idx++)) {
+    if (Bins_bitoff(data, iter->idx++)) {
         return iter->previousDouble;
     }
     binary_t xorValue;
     union64bits rv;
-    binary_t *bins = iter->chunk->data;
 
     // Check if we can use the previous block info
     // meaning control bit number 2 is 1. i.e. control bits are ‘10’ (case b)
@@ -486,23 +490,27 @@ static double readFloat(Compressed_Iterator *iter) {
     // many trailing zeros as with the previous value
     // use  the previous block  information and
     // just read the meaningful XORed value
-    if (Bins_bitoff(bins, iter->idx++)) {
+    if (Bins_bitoff(data, iter->idx++)) {
 #ifdef DEBUG
         assert(iter->leading + iter->trailing <= BINW);
 #endif
-        xorValue = readBits(bins, &iter->idx, iter->blocksize);
+        xorValue = readBits(data, iter->idx, iter->blocksize);
+        iter->idx += iter->blocksize;
         xorValue <<= iter->trailing;
     } else {
         // Read the length of the number of leading zeros in the next 5 bits,
         // then read the length of the meaningful XORed value in the next 6 bits.
         // Finally read the meaningful bits of theXORed value
-        iter->leading = readBits(bins, &iter->idx, DOUBLE_LEADING);
-        iter->blocksize = readBits(bins, &iter->idx, DOUBLE_BLOCK_SIZE) + DOUBLE_BLOCK_ADJUST;
+        iter->leading = readBits(data, iter->idx, DOUBLE_LEADING);
+        iter->idx += DOUBLE_LEADING;
+        iter->blocksize = readBits(data, iter->idx, DOUBLE_BLOCK_SIZE) + DOUBLE_BLOCK_ADJUST;
+        iter->idx += DOUBLE_BLOCK_SIZE;
 #ifdef DEBUG
         assert(leading + blocksize <= BINW);
 #endif
         iter->trailing = BINW - iter->leading - iter->blocksize;
-        xorValue = readBits(bins, &iter->idx, iter->blocksize) << iter->trailing;
+        xorValue = readBits(data, iter->idx, iter->blocksize) << iter->trailing;
+        iter->idx += iter->blocksize;
     }
 
     rv.u = xorValue ^ iter->prevValue.u;
@@ -523,7 +531,7 @@ ChunkResult Compressed_ReadNext(Compressed_Iterator *iter, timestamp_t *timestam
         *value = iter->chunk->baseValue.d;
     } else {
         *timestamp = readInteger(iter);
-        *value = readFloat(iter);
+        *value = readFloat(iter, iter->chunk->data);
     }
     iter->count++;
     return CR_OK;
