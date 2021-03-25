@@ -479,14 +479,13 @@ static double readFloat(Compressed_Iterator *iter) {
     union64bits rv;
     binary_t *bins = iter->chunk->data;
 
-    // Check if previous block information was used
-    const bool usePreviousBlockInfo = Bins_bitoff(bins, iter->idx++);
-    if (usePreviousBlockInfo) {
+    // Check if previous block size information was used
+    const bool usePreviousSizeBlockInfo = Bins_bitoff(bins, iter->idx++);
+    if (usePreviousSizeBlockInfo) {
 #ifdef DEBUG
         assert(iter->prevLeading + iter->prevTrailing <= BINW);
 #endif
-        const u_int8_t prevBlockInfo = BINW - iter->prevLeading - iter->prevTrailing;
-        xorValue = readBits(bins, &iter->idx, prevBlockInfo);
+        xorValue = readBits(bins, &iter->idx, iter->prevBlockSizeInfo);
         xorValue <<= iter->prevTrailing;
     } else {
         const binary_t leading = readBits(bins, &iter->idx, DOUBLE_LEADING);
@@ -499,6 +498,7 @@ static double readFloat(Compressed_Iterator *iter) {
         xorValue = readBits(bins, &iter->idx, blocksize) << trailing;
         iter->prevLeading = leading;
         iter->prevTrailing = trailing;
+        iter->prevBlockSizeInfo = blocksize;
     }
 
     rv.u = xorValue ^ iter->prevValue.u;

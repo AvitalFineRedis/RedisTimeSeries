@@ -58,6 +58,7 @@ typedef struct Compressed_Iterator
     union64bits prevValue;
     u_int8_t prevLeading;
     u_int8_t prevTrailing;
+    u_int8_t prevBlockSizeInfo;
 } Compressed_Iterator;
 
 ChunkResult Compressed_Append(CompressedChunk *chunk, u_int64_t timestamp, double value);
