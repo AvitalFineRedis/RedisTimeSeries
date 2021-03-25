@@ -371,7 +371,7 @@ static ChunkResult appendFloat(CompressedChunk *chunk, double value) {
     localbit_t blockSize = BINW - leading - trailing;
     u_int32_t expectedSize = DOUBLE_LEADING + DOUBLE_BLOCK_SIZE + blockSize;
 #ifdef DEBUG
-    assert(prevLeading + prevTrailing <= BINW);
+    assert(leading + trailing <= BINW);
 #endif
     localbit_t prevBlockInfoSize = BINW - prevLeading - prevTrailing;
     /*
@@ -472,6 +472,7 @@ static u_int64_t readInteger(Compressed_Iterator *iter) {
  */
 static double readFloat(Compressed_Iterator *iter) {
     // Check if value was changed
+    // control bit ‘0’ (case a)
     if (Bins_bitoff(iter->chunk->data, iter->idx++)) {
         return iter->prevValue.d;
     }
@@ -479,26 +480,29 @@ static double readFloat(Compressed_Iterator *iter) {
     union64bits rv;
     binary_t *bins = iter->chunk->data;
 
-    // Check if previous block size information was used
-    const bool usePreviousSizeBlockInfo = Bins_bitoff(bins, iter->idx++);
-    if (usePreviousSizeBlockInfo) {
+    // Check if we can use the previous block info
+    // meaning control bit number 2 is 1. i.e. control bits are ‘10’ (case b)
+    // there are at least as many leading zeros and as
+    // many trailing zeros as with the previous value
+    // use  the previous block  information and
+    // just read the meaningful XORed value
+    if (Bins_bitoff(bins, iter->idx++)) {
 #ifdef DEBUG
-        assert(iter->prevLeading + iter->prevTrailing <= BINW);
+        assert(iter->leading + iter->trailing <= BINW);
 #endif
-        xorValue = readBits(bins, &iter->idx, iter->prevBlockSizeInfo);
-        xorValue <<= iter->prevTrailing;
+        xorValue = readBits(bins, &iter->idx, iter->blocksize);
+        xorValue <<= iter->trailing;
     } else {
-        const binary_t leading = readBits(bins, &iter->idx, DOUBLE_LEADING);
-        const binary_t blocksize =
-            readBits(bins, &iter->idx, DOUBLE_BLOCK_SIZE) + DOUBLE_BLOCK_ADJUST;
+        // Read the length of the number of leading zeros in the next 5 bits,
+        // then read the length of the meaningful XORed value in the next 6 bits.
+        // Finally read the meaningful bits of theXORed value
+        iter->leading = readBits(bins, &iter->idx, DOUBLE_LEADING);
+        iter->blocksize = readBits(bins, &iter->idx, DOUBLE_BLOCK_SIZE) + DOUBLE_BLOCK_ADJUST;
 #ifdef DEBUG
         assert(leading + blocksize <= BINW);
 #endif
-        const binary_t trailing = BINW - leading - blocksize;
-        xorValue = readBits(bins, &iter->idx, blocksize) << trailing;
-        iter->prevLeading = leading;
-        iter->prevTrailing = trailing;
-        iter->prevBlockSizeInfo = blocksize;
+        iter->trailing = BINW - iter->leading - iter->blocksize;
+        xorValue = readBits(bins, &iter->idx, iter->blocksize) << iter->trailing;
     }
 
     rv.u = xorValue ^ iter->prevValue.u;
