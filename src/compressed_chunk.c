@@ -229,6 +229,7 @@ ChunkIter_t *Compressed_NewChunkIterator(Chunk_t *chunk,
     iter->leading = 32;
     iter->trailing = 32;
     iter->blocksize = 0;
+    iter->previousDouble = iter->prevValue.d;
 
     return (ChunkIter_t *)iter;
 }

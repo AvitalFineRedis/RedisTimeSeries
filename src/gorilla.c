@@ -474,7 +474,7 @@ static double readFloat(Compressed_Iterator *iter) {
     // Check if value was changed
     // control bit ‘0’ (case a)
     if (Bins_bitoff(iter->chunk->data, iter->idx++)) {
-        return iter->prevValue.d;
+        return iter->previousDouble;
     }
     binary_t xorValue;
     union64bits rv;
@@ -506,7 +506,8 @@ static double readFloat(Compressed_Iterator *iter) {
     }
 
     rv.u = xorValue ^ iter->prevValue.u;
-    return iter->prevValue.d = rv.d;
+    iter->previousDouble = iter->prevValue.d = rv.d;
+    return iter->previousDouble;
 }
 
 ChunkResult Compressed_ReadNext(Compressed_Iterator *iter, timestamp_t *timestamp, double *value) {

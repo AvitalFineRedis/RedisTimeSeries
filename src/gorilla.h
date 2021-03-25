@@ -59,6 +59,7 @@ typedef struct Compressed_Iterator
     u_int8_t leading;
     u_int8_t trailing;
     u_int8_t blocksize;
+    double previousDouble;
 } Compressed_Iterator;
 
 ChunkResult Compressed_Append(CompressedChunk *chunk, u_int64_t timestamp, double value);
