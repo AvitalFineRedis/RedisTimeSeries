@@ -126,23 +126,47 @@ const u_int64_t bittt[] = {
     1ULL << 56, 1ULL << 57, 1ULL << 58, 1ULL << 59, 1ULL << 60, 1ULL << 61, 1ULL << 62, 1ULL << 63
 };
 
+const uint64_t bitmask[] = {
+    (1ULL << 0) - 1,  (1ULL << 1) - 1,  (1ULL << 2) - 1,  (1ULL << 3) - 1,  (1ULL << 4) - 1,
+    (1ULL << 5) - 1,  (1ULL << 6) - 1,  (1ULL << 7) - 1,  (1ULL << 8) - 1,  (1ULL << 9) - 1,
+    (1ULL << 10) - 1, (1ULL << 11) - 1, (1ULL << 12) - 1, (1ULL << 13) - 1, (1ULL << 14) - 1,
+    (1ULL << 15) - 1, (1ULL << 16) - 1, (1ULL << 17) - 1, (1ULL << 18) - 1, (1ULL << 19) - 1,
+    (1ULL << 20) - 1, (1ULL << 21) - 1, (1ULL << 22) - 1, (1ULL << 23) - 1, (1ULL << 24) - 1,
+    (1ULL << 25) - 1, (1ULL << 26) - 1, (1ULL << 27) - 1, (1ULL << 28) - 1, (1ULL << 29) - 1,
+    (1ULL << 30) - 1, (1ULL << 31) - 1, (1ULL << 32) - 1, (1ULL << 33) - 1, (1ULL << 34) - 1,
+    (1ULL << 35) - 1, (1ULL << 36) - 1, (1ULL << 37) - 1, (1ULL << 38) - 1, (1ULL << 39) - 1,
+    (1ULL << 40) - 1, (1ULL << 41) - 1, (1ULL << 42) - 1, (1ULL << 43) - 1, (1ULL << 44) - 1,
+    (1ULL << 45) - 1, (1ULL << 46) - 1, (1ULL << 47) - 1, (1ULL << 48) - 1, (1ULL << 49) - 1,
+    (1ULL << 50) - 1, (1ULL << 51) - 1, (1ULL << 52) - 1, (1ULL << 53) - 1, (1ULL << 54) - 1,
+    (1ULL << 55) - 1, (1ULL << 56) - 1, (1ULL << 57) - 1, (1ULL << 58) - 1, (1ULL << 59) - 1,
+    (1ULL << 60) - 1, (1ULL << 61) - 1, (1ULL << 62) - 1, (1ULL << 63) - 1,
+
+};
+
 // 2^bit
 static inline u_int64_t BIT(u_int64_t bit) {
-    if (__builtin_expect(bit > 63, 0)) {
-        return 0ULL;
-    }
+    // if (__builtin_expect(bit > 63, 0)) {
+    //     return 0ULL;
+    // }
     return bittt[bit];
 }
 
 // the LSB `bits` turned on
 static inline u_int64_t MASK(u_int64_t bits) {
-    return BIT(bits) - 1;
+    // assert(bits < 64);
+    // if (__builtin_expect(bits > 63, 0)) {
+    //     return 0ULL;
+    // }
+    return bitmask[bits];
 }
 
 // Logic to check Least Significant Bit (LSB) of a number
 // Clear most significant bits from position `bits`
 static inline u_int64_t LSB(u_int64_t x, u_int64_t bits) {
-    return x & MASK(bits);
+    // if (__builtin_expect(bits > 63, 0)) {
+    //     return x & MASK(bits);
+    // }
+    return x & bitmask[bits];
 }
 
 /*
