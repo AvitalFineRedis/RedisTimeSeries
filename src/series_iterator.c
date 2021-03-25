@@ -122,15 +122,13 @@ ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSamp
             if (res == CR_ERR) {
                 return CR_ERR;
             }
-            const u_int64_t current_v = currentSample->timestamp;
-
             // check timestamp is within range
             // forward range handling
-            if (current_v < itt_min_ts) {
+            if (currentSample->timestamp < itt_min_ts) {
                 // didn't reach the starting point of the requested range
                 continue;
             }
-            if (current_v > itt_max_ts) {
+            if (currentSample->timestamp > itt_max_ts) {
                 // reached the end of the requested range
                 return CR_END;
             }
@@ -153,14 +151,12 @@ ChunkResult _seriesIteratorGetNext(SeriesIterator *iterator, Sample *currentSamp
             if (res == CR_ERR) {
                 return CR_ERR;
             }
-            const u_int64_t current_v = currentSample->timestamp;
-
             // reverse range handling
-            if (current_v > itt_max_ts) {
+            if (currentSample->timestamp > itt_max_ts) {
                 // didn't reach our starting range
                 continue;
             }
-            if (current_v < itt_min_ts) {
+            if (currentSample->timestamp < itt_min_ts) {
                 // didn't reach the starting point of the requested range
                 return CR_END;
             }

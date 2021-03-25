@@ -246,9 +246,8 @@ static binary_t readBits(binary_t *bins, globalbit_t *bit, const u_int8_t dataLe
     if (available >= dataLen) {
         bin = LSB(*bin_it >> lbit, dataLen);
     } else {
-        u_int8_t left = dataLen - available;
         bin = LSB(*bin_it >> lbit, available);
-        bin |= LSB(*++bin_it, left) << available;
+        bin |= LSB(*++bin_it, dataLen - available) << available;
     }
     *bit += dataLen;
     return bin;
@@ -455,25 +454,26 @@ static double readFloat(Compressed_Iterator *iter) {
     }
     binary_t xorValue;
     union64bits rv;
+    binary_t *bins = iter->chunk->data;
 
     // Check if previous block information was used
-    const bool usePreviousBlockInfo = Bins_bitoff(iter->chunk->data, iter->idx++);
+    const bool usePreviousBlockInfo = Bins_bitoff(bins, iter->idx++);
     if (usePreviousBlockInfo) {
 #ifdef DEBUG
         assert(iter->prevLeading + iter->prevTrailing <= BINW);
 #endif
         const u_int8_t prevBlockInfo = BINW - iter->prevLeading - iter->prevTrailing;
-        xorValue = readBits(iter->chunk->data, &iter->idx, prevBlockInfo);
+        xorValue = readBits(bins, &iter->idx, prevBlockInfo);
         xorValue <<= iter->prevTrailing;
     } else {
-        const binary_t leading = readBits(iter->chunk->data, &iter->idx, DOUBLE_LEADING);
+        const binary_t leading = readBits(bins, &iter->idx, DOUBLE_LEADING);
         const binary_t blocksize =
-            readBits(iter->chunk->data, &iter->idx, DOUBLE_BLOCK_SIZE) + DOUBLE_BLOCK_ADJUST;
+            readBits(bins, &iter->idx, DOUBLE_BLOCK_SIZE) + DOUBLE_BLOCK_ADJUST;
 #ifdef DEBUG
         assert(leading + blocksize <= BINW);
 #endif
         const binary_t trailing = BINW - leading - blocksize;
-        xorValue = readBits(iter->chunk->data, &iter->idx, blocksize) << trailing;
+        xorValue = readBits(bins, &iter->idx, blocksize) << trailing;
         iter->prevLeading = leading;
         iter->prevTrailing = trailing;
     }
