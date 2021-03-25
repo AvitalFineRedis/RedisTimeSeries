@@ -494,8 +494,8 @@ ChunkResult Compressed_ReadNext(Compressed_Iterator *iter, timestamp_t *timestam
         *timestamp = iter->chunk->baseTimestamp;
         *value = iter->chunk->baseValue.d;
     } else {
-        *timestamp = iter->prevTS = readInteger(iter);
-        *value = iter->prevValue.d = readFloat(iter);
+        *timestamp = readInteger(iter);
+        *value = readFloat(iter);
     }
     iter->count++;
     return CR_OK;
