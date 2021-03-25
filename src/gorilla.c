@@ -115,7 +115,7 @@
 #define CMPR_L5 32
 
 // The powers of 2 from 0 to 63
-const u_int64_t bittt[] = {
+u_int64_t bittt[] = {
     1ULL << 0,  1ULL << 1,  1ULL << 2,  1ULL << 3,  1ULL << 4,  1ULL << 5,  1ULL << 6,  1ULL << 7,
     1ULL << 8,  1ULL << 9,  1ULL << 10, 1ULL << 11, 1ULL << 12, 1ULL << 13, 1ULL << 14, 1ULL << 15,
     1ULL << 16, 1ULL << 17, 1ULL << 18, 1ULL << 19, 1ULL << 20, 1ULL << 21, 1ULL << 22, 1ULL << 23,
@@ -126,7 +126,7 @@ const u_int64_t bittt[] = {
     1ULL << 56, 1ULL << 57, 1ULL << 58, 1ULL << 59, 1ULL << 60, 1ULL << 61, 1ULL << 62, 1ULL << 63
 };
 
-const uint64_t bitmask[] = {
+ uint64_t bitmask[] = {
     (1ULL << 0) - 1,  (1ULL << 1) - 1,  (1ULL << 2) - 1,  (1ULL << 3) - 1,  (1ULL << 4) - 1,
     (1ULL << 5) - 1,  (1ULL << 6) - 1,  (1ULL << 7) - 1,  (1ULL << 8) - 1,  (1ULL << 9) - 1,
     (1ULL << 10) - 1, (1ULL << 11) - 1, (1ULL << 12) - 1, (1ULL << 13) - 1, (1ULL << 14) - 1,
@@ -221,7 +221,7 @@ static inline int64_t Bin_MinVal(u_int8_t nbits) {
 
 // `bit` is a global bit (can be out of scope of a single binary_t)
 
-static inline u_int8_t localbit(const globalbit_t bit) {
+static inline u_int8_t localbit( globalbit_t bit) {
     return bit % BINW;
 }
 
@@ -232,15 +232,15 @@ static bool Bin_InRange(int64_t x, u_int8_t nbits) {
     return x >= Bin_MinVal(nbits) && x <= Bin_MaxVal(nbits);
 }
 
-static inline binary_t *Bins_bitbin(const u_int64_t *bins, const globalbit_t bit) {
+static inline binary_t *Bins_bitbin(u_int64_t *bins,  globalbit_t bit) {
     return &bins[bit >> 6];
 }
 
-static inline bool Bins_bitoff(const u_int64_t *bins, globalbit_t bit) {
+static inline bool Bins_bitoff(u_int64_t *bins, globalbit_t bit) {
     return !(bins[bit >> 6] & BIT(localbit(bit)));
 }
 
-static inline bool Bins_biton(const u_int64_t *bins, globalbit_t bit) {
+static inline bool Bins_biton(u_int64_t *bins, globalbit_t bit) {
     return !Bins_bitoff(bins, bit);
 }
 
@@ -260,12 +260,12 @@ static void appendBits(binary_t *bins, globalbit_t *bit, binary_t data, u_int8_t
 }
 
 // Read `dataLen` bits from `bins` at position `bit`
-static inline binary_t readBits(const binary_t *bins,
+static inline binary_t readBits( binary_t *bins,
                                 globalbit_t start_pos,
-                                const u_int8_t dataLen) {
+                                 u_int8_t dataLen) {
     binary_t *bin_it = Bins_bitbin(bins, start_pos);
-    const localbit_t lbit = localbit(start_pos);
-    const localbit_t available = BINW - lbit;
+     localbit_t lbit = localbit(start_pos);
+     localbit_t available = BINW - lbit;
 
     binary_t bin = 0;
     if (available >= dataLen) {
@@ -434,7 +434,7 @@ ChunkResult Compressed_Append(CompressedChunk *chunk, timestamp_t timestamp, dou
  * then decodes the value back to an int64 and calculate the original value
  * using `prevTS` and `prevDelta`.
  */
-static inline u_int64_t readInteger(Compressed_Iterator *iter, const uint64_t *bins) {
+static inline u_int64_t readInteger(Compressed_Iterator *iter,  uint64_t *bins) {
     int64_t dd = 0;
     // Read stored double delta value
     if (Bins_bitoff(bins, iter->idx++)) {
@@ -474,7 +474,7 @@ static inline u_int64_t readInteger(Compressed_Iterator *iter, const uint64_t *b
  *
  * Finally, the compressed representation of the value is decoded.
  */
-static inline double readFloat(Compressed_Iterator *iter, const uint64_t *data) {
+static inline double readFloat(Compressed_Iterator *iter,  uint64_t *data) {
     // Check if value was changed
     // control bit ‘0’ (case a)
     if (Bins_bitoff(data, iter->idx++)) {
