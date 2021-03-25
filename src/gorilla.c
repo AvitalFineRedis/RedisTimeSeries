@@ -434,8 +434,7 @@ ChunkResult Compressed_Append(CompressedChunk *chunk, timestamp_t timestamp, dou
  * then decodes the value back to an int64 and calculate the original value
  * using `prevTS` and `prevDelta`.
  */
-static u_int64_t readInteger(Compressed_Iterator *iter) {
-    binary_t *bins = iter->chunk->data;
+static inline u_int64_t readInteger(Compressed_Iterator *iter, const uint64_t *bins) {
     int64_t dd = 0;
     // Read stored double delta value
     if (Bins_bitoff(bins, iter->idx++)) {
@@ -462,7 +461,7 @@ static u_int64_t readInteger(Compressed_Iterator *iter) {
 
     // Update iterator
     iter->prevDelta += dd;
-    return iter->prevTS = iter->prevTS + iter->prevDelta;
+    return iter->prevTS += iter->prevDelta;
 }
 
 /*
@@ -475,14 +474,13 @@ static u_int64_t readInteger(Compressed_Iterator *iter) {
  *
  * Finally, the compressed representation of the value is decoded.
  */
-static double readFloat(Compressed_Iterator *iter, const uint64_t *data) {
+static inline double readFloat(Compressed_Iterator *iter, const uint64_t *data) {
     // Check if value was changed
     // control bit ‘0’ (case a)
     if (Bins_bitoff(data, iter->idx++)) {
         return iter->previousDouble;
     }
     binary_t xorValue;
-    union64bits rv;
 
     // Check if we can use the previous block info
     // meaning control bit number 2 is 1. i.e. control bits are ‘10’ (case b)
@@ -512,10 +510,9 @@ static double readFloat(Compressed_Iterator *iter, const uint64_t *data) {
         xorValue = readBits(data, iter->idx, iter->blocksize) << iter->trailing;
         iter->idx += iter->blocksize;
     }
-
+    union64bits rv;
     rv.u = xorValue ^ iter->prevValue.u;
-    iter->previousDouble = iter->prevValue.d = rv.d;
-    return iter->previousDouble;
+    return iter->previousDouble = iter->prevValue.d = rv.d;
 }
 
 ChunkResult Compressed_ReadNext(Compressed_Iterator *iter, timestamp_t *timestamp, double *value) {
@@ -525,14 +522,15 @@ ChunkResult Compressed_ReadNext(Compressed_Iterator *iter, timestamp_t *timestam
 #endif
     if (iter->count >= iter->chunk->count)
         return CR_END;
-
-    if (iter->count == 0) { // First sample
+    // First sample
+    if (__builtin_expect(iter->count == 0, 0)) {
         *timestamp = iter->chunk->baseTimestamp;
         *value = iter->chunk->baseValue.d;
-    } else {
-        *timestamp = readInteger(iter);
-        *value = readFloat(iter, iter->chunk->data);
+        iter->count++;
+        return CR_OK;
     }
+    *timestamp = readInteger(iter, iter->chunk->data);
+    *value = readFloat(iter, iter->chunk->data);
     iter->count++;
     return CR_OK;
 }
