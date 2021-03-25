@@ -237,10 +237,10 @@ static void appendBits(binary_t *bins, globalbit_t *bit, binary_t data, u_int8_t
 }
 
 // Read `dataLen` bits from `bins` at position `bit`
-static binary_t readBits(binary_t *bins, globalbit_t *bit, u_int8_t dataLen) {
+static binary_t readBits(binary_t *bins, globalbit_t *bit, const u_int8_t dataLen) {
     binary_t *bin_it = Bins_bitbin(bins, *bit);
-    localbit_t lbit = localbit(*bit);
-    localbit_t available = BINW - lbit;
+    const localbit_t lbit = localbit(*bit);
+    const localbit_t available = BINW - lbit;
 
     binary_t bin = 0;
     if (available >= dataLen) {
@@ -261,7 +261,9 @@ static bool isSpaceAvailable(CompressedChunk *chunk, u_int8_t size) {
 
 /***************************** APPEND ********************************/
 static ChunkResult appendInteger(CompressedChunk *chunk, timestamp_t timestamp) {
+#ifdef DEBUG
     assert(timestamp >= chunk->prevTimestamp);
+#endif
     timestamp_t curDelta = timestamp - chunk->prevTimestamp;
 
     union64bits doubleDelta;
@@ -341,10 +343,14 @@ static ChunkResult appendFloat(CompressedChunk *chunk, double value) {
 
     localbit_t prevLeading = chunk->prevLeading;
     localbit_t prevTrailing = chunk->prevTrailing;
+#ifdef DEBUG
     assert(leading + trailing <= BINW);
+#endif
     localbit_t blockSize = BINW - leading - trailing;
     u_int32_t expectedSize = DOUBLE_LEADING + DOUBLE_BLOCK_SIZE + blockSize;
+#ifdef DEBUG
     assert(prevLeading + prevTrailing <= BINW);
+#endif
     localbit_t prevBlockInfoSize = BINW - prevLeading - prevTrailing;
     /*
      * First bit encodes whether previous block parameters can be used since
@@ -374,7 +380,9 @@ static ChunkResult appendFloat(CompressedChunk *chunk, double value) {
 }
 
 ChunkResult Compressed_Append(CompressedChunk *chunk, timestamp_t timestamp, double value) {
+#ifdef DEBUG
     assert(chunk);
+#endif
 
     if (chunk->count == 0) {
         chunk->baseValue.d = chunk->prevValue.d = value;
@@ -441,27 +449,30 @@ static u_int64_t readInteger(Compressed_Iterator *iter) {
  * Finally, the compressed representation of the value is decoded.
  */
 static double readFloat(Compressed_Iterator *iter) {
-    binary_t xorValue;
-    union64bits rv;
-
     // Check if value was changed
     if (Bins_bitoff(iter->chunk->data, iter->idx++)) {
         return iter->prevValue.d;
     }
+    binary_t xorValue;
+    union64bits rv;
 
     // Check if previous block information was used
-    bool usePreviousBlockInfo = Bins_bitoff(iter->chunk->data, iter->idx++);
+    const bool usePreviousBlockInfo = Bins_bitoff(iter->chunk->data, iter->idx++);
     if (usePreviousBlockInfo) {
+#ifdef DEBUG
         assert(iter->prevLeading + iter->prevTrailing <= BINW);
-        u_int8_t prevBlockInfo = BINW - iter->prevLeading - iter->prevTrailing;
+#endif
+        const u_int8_t prevBlockInfo = BINW - iter->prevLeading - iter->prevTrailing;
         xorValue = readBits(iter->chunk->data, &iter->idx, prevBlockInfo);
         xorValue <<= iter->prevTrailing;
     } else {
-        binary_t leading = readBits(iter->chunk->data, &iter->idx, DOUBLE_LEADING);
-        binary_t blocksize =
+        const binary_t leading = readBits(iter->chunk->data, &iter->idx, DOUBLE_LEADING);
+        const binary_t blocksize =
             readBits(iter->chunk->data, &iter->idx, DOUBLE_BLOCK_SIZE) + DOUBLE_BLOCK_ADJUST;
+#ifdef DEBUG
         assert(leading + blocksize <= BINW);
-        binary_t trailing = BINW - leading - blocksize;
+#endif
+        const binary_t trailing = BINW - leading - blocksize;
         xorValue = readBits(iter->chunk->data, &iter->idx, blocksize) << trailing;
         iter->prevLeading = leading;
         iter->prevTrailing = trailing;
@@ -472,9 +483,10 @@ static double readFloat(Compressed_Iterator *iter) {
 }
 
 ChunkResult Compressed_ReadNext(Compressed_Iterator *iter, timestamp_t *timestamp, double *value) {
+#ifdef DEBUG
     assert(iter);
     assert(iter->chunk);
-
+#endif
     if (iter->count >= iter->chunk->count)
         return CR_END;
 
