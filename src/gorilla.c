@@ -145,27 +145,26 @@ const uint64_t bitmask[] = {
 
 // 2^bit
 static inline u_int64_t BIT(u_int64_t bit) {
-    // if (__builtin_expect(bit > 63, 0)) {
-    //     return 0ULL;
-    // }
+    if (__builtin_expect(bit > 63, 0)) {
+        return 0ULL;
+    }
     return bittt[bit];
 }
 
 // the LSB `bits` turned on
 static inline u_int64_t MASK(u_int64_t bits) {
-    // assert(bits < 64);
-    // if (__builtin_expect(bits > 63, 0)) {
-    //     return 0ULL;
-    // }
+    if (__builtin_expect(bits > 63, 0)) {
+        return 0ULL - 1;
+    }
     return bitmask[bits];
 }
 
 // Logic to check Least Significant Bit (LSB) of a number
 // Clear most significant bits from position `bits`
 static inline u_int64_t LSB(u_int64_t x, u_int64_t bits) {
-    // if (__builtin_expect(bits > 63, 0)) {
-    //     return x & MASK(bits);
-    // }
+    if (__builtin_expect(bits > 63, 0)) {
+        return x & (0ULL - 1);
+    }
     return x & bitmask[bits];
 }
 
